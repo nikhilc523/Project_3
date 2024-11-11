@@ -1,0 +1,106 @@
+.company-name {
+    font-family: "Abril Fatface", serif;
+    font-weight: 400;
+    font-style: normal;
+}
+
+/* Remove active effect */
+.dropdown .btn:active,
+.btn:focus,
+.btn.active {
+    box-shadow: none !important;
+    background-color: inherit !important;
+    border: inherit !important;
+}
+
+.search-bar .form-control:focus {
+    box-shadow: none;
+    border-color: initial;
+}
+
+.form {
+
+    position: relative;
+}
+
+.form .fa-search {
+
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    color: #9ca3af;
+
+}
+
+.form span {
+
+    position: absolute;
+    right: 17px;
+    top: 13px;
+    padding: 2px;
+    border-left: 1px solid #d1d5db;
+
+}
+
+.left-pan {
+    padding-left: 7px;
+}
+
+.left-pan i {
+
+    padding-left: 10px;
+}
+
+.form-input {
+
+    height: 55px;
+    text-indent: 33px;
+}
+
+.form-input:focus {
+
+    box-shadow: none;
+    border: 1px solid black
+}
+
+.nav a:hover {
+    color: gray;
+}
+
+.hero {
+    background-image: url('../images/hero.jpg');
+    background-size: cover;
+    background-position: center;
+    background-blend-mode: multiply;
+    background-color: rgba(0, 0, 0, 0.5);
+
+}
+.foto-logo {
+    margin-right: 150px;
+}
+
+.login-options-facebook button {
+    background-color: #3b5998;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 10px 20px;
+    font-size: 1.2rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background-color 0.4s ease-in;
+    margin-right: 150px;
+}
+
+.login-options-facebook button:hover {
+    background-color: #2d4373;
+}
+
+hr {
+    width: 80%;
+}
+
+.card-body {
+    background-color: #f8f9fa;
+    height: 200px;
+}
