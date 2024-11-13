@@ -8,6 +8,8 @@ import { storage, ref, uploadBytes, getDownloadURL, db } from '../firebase-confi
 import { doc, getDoc, setDoc, collection, getDocs, query, where } from 'firebase/firestore';
 import axios from 'axios';
 import Card from '../Components/Card';
+import './css/takefive.min.css';
+// import google speech to text
 
 const Dashboard = ({ userData, Logout }) => {
 
@@ -25,6 +27,7 @@ const Dashboard = ({ userData, Logout }) => {
     }, []);
 
 
+
     async function getImageMetadata(refresh=false) {
         if(!refresh){
             return;
@@ -39,12 +42,17 @@ const Dashboard = ({ userData, Logout }) => {
             setImageMetadata(imageMetadata);
             let lables = [];
             console.log("Image Metadata:", imageMetadata);
+            let index = 0;
+            // set index
+
             imageMetadata.forEach((data) => {
+                data.index = index++;
                 data.imageLables?.forEach((label) => {
                     lables.push(label)
                 }
                 );
             });
+
             console.log("Labels:", lables);
             console.log("Image Metadata:", imageMetadata);
             let numberOflines = 4;
@@ -324,6 +332,26 @@ const Dashboard = ({ userData, Logout }) => {
     }
     , []);
 
+    const [activeImage, setActiveImage] = React.useState(null);
+
+    function openImageOverlay(index) {
+        console.log('Open Image Overlay:', index);
+        console.log('Image Metadata:', imageMetadata[index]);
+        setActiveImage(imageMetadata[index]);
+    }
+
+    function nextImage() {
+        console.log('Next Image');
+        setActiveImage(imageMetadata[(activeImage.index + 1) % imageMetadata.length]);
+    }
+
+    function previousImage() {
+
+        console.log('Previous Image');
+        setActiveImage(imageMetadata[(activeImage.index - 1 + imageMetadata.length) % imageMetadata.length]);
+    }
+
+
     return (
         <div className="container-fluid w-100 p-0 m-0">
             <div className="header px-4 py-2 d-flex justify-content-between align-items-center bg-black">
@@ -366,6 +394,10 @@ const Dashboard = ({ userData, Logout }) => {
                             <Link className="dropdown-item" to="#">{userData?.name}</Link>
                             <Link className="dropdown-item" onClick={processLables} to="#">Fetch Data</Link>
                             <Link className="dropdown-item" onClick={handleLogout} to="/">Logout</Link>
+                            {/* start speech */}
+                            {/* <Link className="dropdown-item" onClick={getTextFromSpeechRealTime} to="#">Speech to Text</Link>
+                            {/* end speech */}
+                            {/* <Link className="dropdown-item" onClick={endSpeechToText} to="#">End Speech to Text</Link> */} 
                         </div>
                     </div>
                 </div>
@@ -396,12 +428,53 @@ const Dashboard = ({ userData, Logout }) => {
                             status={image.gotVisionApiResults ? 'Processed' : 'Not Processed'}
                             description={image.imageLables}
                             timeAgo={image.created_time}
+                            openImage={openImageOverlay}
+                            index={index}
                         />
                     ))}
                     </ul>
                 </div>
 
             </div>
+
+            {/* Image ovelay */}
+
+            <section itemscope itemtype="https://schema.org/ImageGallery">
+                <article className="foyer verbose slide" id="open-image" itemprop="image" itemscope itemtype="https://schema.org/ImageObject">
+                    <header>
+                        <h2>Slide 5 of 10</h2>
+                    </header>
+                    <figure>
+                        <img src={activeImage?.imageUrl} alt={activeImage?.id} itemprop="contentUrl" />
+                        <figcaption itemprop="caption">The old castle</figcaption>
+                    </figure>
+                    <article className="roomy">
+                        <h3>Lorem ipsum</h3>
+                        <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin sagittis libero et nulla ultricies,
+                            vitae interdum diam vestibulum. Sed ut convallis est, ac tristique turpis. Fusce ipsum est, fermentum in facilisis imperdiet, tincidunt ac justo. Nunc quis tortor sed nunc ornare ornare.</p>
+
+                        <p>Nullam accumsan ipsum risus, sed auctor enim varius eu. In ipsum sem, suscipit eget tortor nec,
+                            laoreet auctor metus. Integer quis erat nisl. In hac habitasse platea dictumst. Phasellus a finibus
+                            libero. Etiam lacus elit, tempor nec elit eu, bibendum dignissim magna.</p>
+                        <p>Phasellus nec odio velit. In hac habitasse platea dictumst. Aliquam blandit nec nulla a aliquam.
+                            Donec eget erat a leo dapibus egestas sed a nunc. Phasellus elementum laoreet urna, vel porttitor
+                            lectus iaculis vitae. Duis a euismod lorem. Pellentesque quis auctor eros, at mollis mauris. Etiam
+                            sit amet finibus nulla. Cras at mi vitae lorem ultricies tristique.</p>
+                    </article>
+                    <nav>
+                        <a href="#nowhere" rel="parent">Memories
+                        
+                        
+                        
+                        
+                        
+                        
+                        </a>
+                        <a href="#open-image" className="prev" onClick={previousImage} rel="prev" itemprop="prev">❮</a>
+                        <a href="#open-image" className="next" onClick={nextImage} rel="next" itemprop="next">❯</a>
+                    </nav>
+                </article>
+            </section>
 
         </div>
     );

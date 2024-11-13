@@ -2,10 +2,10 @@ import React from 'react';
 import './Card.css'; // Assuming you will create a CSS file for styling
 
 // Card component to display individual card details
-const Card = ({ image, thumb, title, tagline, status, description, timeAgo }) => {
+const Card = ({ index, image, thumb, title, tagline, status, description, timeAgo, openImage }) => {
     return (
         <li>
-            <a href="" className="card">
+            <a href="#open-image" className="card" onClick={() => openImage(index)}>
                 <img src={image} className="card__image" alt={title} />
                 <div className="card__overlay">
                     <div className="card__header">
@@ -17,10 +17,9 @@ const Card = ({ image, thumb, title, tagline, status, description, timeAgo }) =>
                         </div>
                     </div>
                     <p className="card__description">
-                        {description?.map(desc => (
-                            <span key={desc} className="btn rounded-pill btn-secondary m-1">{desc}</span>
-                        )
-                        )}
+                        {description?.map((desc, index) => (
+                            <span key={index} className="btn rounded-pill btn-secondary m-1">{desc}</span>
+                        ))}
                     </p>
                 </div>
             </a>
