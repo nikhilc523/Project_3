@@ -9,12 +9,18 @@ import { doc, getDoc, setDoc, collection, getDocs, query, where } from 'firebase
 import axios from 'axios';
 import Card from '../Components/Card';
 import './css/takefive.min.css';
+import SpeechToText from '../Components/SpeechToText';
+import { GoogleGenerativeAI } from '@google/generative-ai'
+import { ToastContainer, toast, Flip } from 'react-toastify';
 // import google speech to text
 
 const Dashboard = ({ userData, Logout }) => {
 
+    const [loading, setLoading] = React.useState(true);
+
     const [imageMetadata, setImageMetadata] = React.useState([]);
     const [lablesPerLine, setLablesPerLine] = React.useState([]);
+    const [fetchingData, setFetchingData] = React.useState(false);
     const navigate = useNavigate();
 
     useEffect(() => {
@@ -25,6 +31,18 @@ const Dashboard = ({ userData, Logout }) => {
             userData = user;
         }
     }, []);
+
+    const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY);
+    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+
+    async function getDataFromPrompt(prompt) {
+        const response = await model.generateContent({ prompt: prompt });
+        console.log(response.data);
+    }
+
+    
+
+
 
 
 
@@ -65,6 +83,8 @@ const Dashboard = ({ userData, Logout }) => {
             console.log("Lines:", lines);
             setLablesPerLine(lines);
             console.log("Image Labels:", lables);
+            setLoading(false);
+            toastSucessMessage('Image Metadata fetched successfully');
         } catch (error) {
             console.error("Error getting image metadata", error);
         }
@@ -109,6 +129,7 @@ const Dashboard = ({ userData, Logout }) => {
     async function storeImagesToFirestore(ImageData) {
         try {
             // Loop through each image
+            toastSucessMessage('Storing Image Metadata in Firestore');
             for (let i = 0; i < ImageData.length; i++) {
                 const userRef = doc(db, "imageMetadata", ImageData[i].id);
 
@@ -116,7 +137,7 @@ const Dashboard = ({ userData, Logout }) => {
                 const userDoc = await getDoc(userRef);
                 if (userDoc.exists()) {
                     console.log("Image metadata already exists in Firestore");
-                    return;
+                    continue;
                 }
 
 
@@ -128,11 +149,9 @@ const Dashboard = ({ userData, Logout }) => {
                 // Store image metadata in Firestore
                 await setDoc(userRef, {
                     ...ImageData[i],
-                });
+                }, { merge: true });
             }
-
-
-
+            getAndSaveVisionApiResults();
             console.log("Image metadata stored successfully in Firestore " +ImageData.length + " images");
         } catch (error) {
             console.error("Error storing image metadata in Firestore", error);
@@ -140,6 +159,7 @@ const Dashboard = ({ userData, Logout }) => {
     }
 
     async function processFacebookImage() {
+        toastSucessMessage('Fetching Facebook Image');
         try {
             
             var userId = userData.id;
@@ -160,6 +180,8 @@ const Dashboard = ({ userData, Logout }) => {
                     link: photo.link,
                     imageUrl: photo.images[0].source,
                     userId: userId,
+                    height: photo.images[0].height,
+                    width: photo.images[0].width,
                 }
                 );
             });
@@ -190,10 +212,12 @@ const Dashboard = ({ userData, Logout }) => {
 
         } catch (error) {
             console.error("Error processing Facebook image", error);
+            fetchingData(false);
         }
     }
 
     async function fetchFaceBookData() {
+        setFetchingData(true);
         window.FB.getLoginStatus(function (response) {
             console.log('User is loggedd in');
             console.log(response)
@@ -224,6 +248,8 @@ const Dashboard = ({ userData, Logout }) => {
 
     async function getAndSaveVisionApiResults() {
 
+        toastSucessMessage('Getting Data from Cloud Vision API');
+
         console.log('Getting Vision API Started');
 
         await getImageMetadata();
@@ -237,6 +263,7 @@ const Dashboard = ({ userData, Logout }) => {
         imageMetadata.forEach(async (data) => {
             if(data.gotVisionApiResults){
                 console.log('Vision API Results already exists');
+                setFetchingData(false);
                 return;
             }
             let id = data.id;
@@ -300,9 +327,11 @@ const Dashboard = ({ userData, Logout }) => {
                 );
             } catch (error) {
                 console.error("Error storing Vision API results in Firestore", error);
+
             }
-        
+            
         });
+        setFetchingData(false);
 
         
         
@@ -351,8 +380,56 @@ const Dashboard = ({ userData, Logout }) => {
         setActiveImage(imageMetadata[(activeImage.index - 1 + imageMetadata.length) % imageMetadata.length]);
     }
 
+    function setTextInsearchBox(text){
+        // clear search box
+        document.getElementById('search-box').value = '';
+        document.getElementById('search-box').value = text;
+        // focus on search box
+        document.getElementById('search-box').focus();
+    }
 
-    return (
+    function toastSucessMessage(msg) {
+        toast.success(msg, {
+            position: "bottom-right",
+            autoClose: 5000,
+            hideProgressBar: true,
+            closeOnClick: true,
+            pauseOnHover: true,
+            draggable: true,
+            progress: undefined,
+            theme: "light",
+            transition: Flip,
+        });
+    }
+
+    
+
+    function returnPromise(func){
+        return new Promise((resolve, reject) => {
+            try {
+                func();
+                resolve();
+            } catch (error) {
+                reject(error);
+            }
+        });
+    }
+
+    function toastPromise(func){
+        toast.promise(
+            returnPromise(func),
+            {
+                pending: 'Fetching Data 🕒',
+                success: 'Job Done 🚀',
+                error: 'Promise rejected 🤯'
+            }
+        )
+    }
+
+
+
+
+    return !loading ? (
         <div className="container-fluid w-100 p-0 m-0">
             <div className="header px-4 py-2 d-flex justify-content-between align-items-center bg-black">
                 <div className="company-name d-flex align-items-center">
@@ -361,11 +438,14 @@ const Dashboard = ({ userData, Logout }) => {
                 </div>
                 <div className="user d-flex align-items-center mx-5">
                     <div className="search-bar p-2">
-                        <input className="search-input" type="text" />
+                        <input className="search-input" type="text" id='search-box' />
                         <a href="#" className="search_icon">
                             <div className="fa fa-search"></div>
                         </a>
                     </div>
+                    <SpeechToText 
+                        setText={setTextInsearchBox}
+                    />
                     <div className="nav">
                         <ul className="nav justify-content-around">
                             <li className="nav-item">
@@ -392,7 +472,7 @@ const Dashboard = ({ userData, Logout }) => {
                         </button>
                         <div className="dropdown-menu" aria-labelledby="dropdownMenuButton">
                             <Link className="dropdown-item" to="#">{userData?.name}</Link>
-                            <Link className="dropdown-item" onClick={processLables} to="#">Fetch Data</Link>
+                            <Link className="dropdown-item" onClick={() => toastPromise(fetchFaceBookData)} to="#">Fetch data</Link>
                             <Link className="dropdown-item" onClick={handleLogout} to="/">Logout</Link>
                             {/* start speech */}
                             {/* <Link className="dropdown-item" onClick={getTextFromSpeechRealTime} to="#">Speech to Text</Link>
@@ -408,7 +488,7 @@ const Dashboard = ({ userData, Logout }) => {
                         <div key={index} className="image-lables">
                             <marquee behavior="alternate" direction={index % 2 === 0 ? "left" : "right"} loop="infinite" scrollamount="3">
                                 {line.map((label, index) => (
-                                        <span key={index} className="btn rounded-pill btn-info mx-1">{label}</span>
+                                    <span key={index} className="btn rounded-pill bg-light mx-1">{label}</span>
                                 ))}
                             </marquee>
                         </div>
@@ -416,6 +496,11 @@ const Dashboard = ({ userData, Logout }) => {
                 
             </div>
             <div className="container-fluid w-100 p-0 m-0">
+                {fetchingData ? (
+                    <div className="container-fluid w-100 p-0 m-0 d-flex justify-content-center align-items-center">
+                        <div class="loader"></div>
+                    </div>
+                ) : (
                 <div className="image-gallery">
                     <ul className="cards">
                     {imageMetadata.map((image, index) => (
@@ -434,7 +519,7 @@ const Dashboard = ({ userData, Logout }) => {
                     ))}
                     </ul>
                 </div>
-
+                )}
             </div>
 
             {/* Image ovelay */}
@@ -449,6 +534,7 @@ const Dashboard = ({ userData, Logout }) => {
                         <figcaption itemprop="caption">The old castle</figcaption>
                     </figure>
                     <article className="roomy">
+                        <div class="loader"></div>
                         <h3>Lorem ipsum</h3>
                         <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin sagittis libero et nulla ultricies,
                             vitae interdum diam vestibulum. Sed ut convallis est, ac tristique turpis. Fusce ipsum est, fermentum in facilisis imperdiet, tincidunt ac justo. Nunc quis tortor sed nunc ornare ornare.</p>
@@ -462,22 +548,20 @@ const Dashboard = ({ userData, Logout }) => {
                             sit amet finibus nulla. Cras at mi vitae lorem ultricies tristique.</p>
                     </article>
                     <nav>
-                        <a href="#nowhere" rel="parent">Memories
-                        
-                        
-                        
-                        
-                        
-                        
-                        </a>
+                        <a href="#nowhere" rel="parent">Memories</a>
                         <a href="#open-image" className="prev" onClick={previousImage} rel="prev" itemprop="prev">❮</a>
                         <a href="#open-image" className="next" onClick={nextImage} rel="next" itemprop="next">❯</a>
                     </nav>
                 </article>
             </section>
+            
 
         </div>
-    );
+    ) : (
+        <div className="container-fluid w-100 p-0 m-0 d-flex justify-content-center align-items-center" style={{ height: '100vh' }}>
+            <div class="loader"></div>
+        </div>
+    )
 };
 
 export default Dashboard;
