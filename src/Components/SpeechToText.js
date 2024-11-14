@@ -40,7 +40,7 @@ const SpeechToText = ({setText}) => {
         throw new Error("REACT_APP_GEMINI_API_KEY not found in the environment");
     }
 
-    const apiKey = process.env.REACT_APP_GEMINI_API_KEY;
+    const apiKey = process.env.REACT_APP_GOOGLE_VISION_API_KEY;
     const startRecording = async () => {
         try {
             const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -60,7 +60,7 @@ const SpeechToText = ({setText}) => {
                     const startTime = performance.now();
 
                     const response = await axios.post(
-                        `https://speech.googleapis.com/v1/speech:recognize?key=${'AIzaSyAQVYpnntA_QNhRWOHcD_PF0Zl0nmeaeRA'}`,
+                        `https://speech.googleapis.com/v1/speech:recognize?key=${apiKey}`,
                         {
                             config: {
                                 encoding: 'WEBM_OPUS',
