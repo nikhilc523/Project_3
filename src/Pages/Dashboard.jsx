@@ -34,10 +34,14 @@ const Dashboard = ({ userData, Logout }) => {
 
     const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY);
     const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
-
+    
     async function getDataFromPrompt(prompt) {
-        const response = await model.generateContent({ prompt: prompt });
-        console.log(response.data);
+        if(!prompt){
+            return;
+        }
+        console.log('Prompt:', prompt);
+        const result = await model.generateContent(prompt);
+        console.log(result.response.text());
     }
 
     
@@ -386,6 +390,7 @@ const Dashboard = ({ userData, Logout }) => {
         document.getElementById('search-box').value = text;
         // focus on search box
         document.getElementById('search-box').focus();
+        setSearchText(text);
     }
 
     function toastSucessMessage(msg) {
@@ -426,6 +431,16 @@ const Dashboard = ({ userData, Logout }) => {
         )
     }
 
+    function getGeneratedText(){
+        let text = document.getElementById('search-box').value;
+        console.log('Generating Text:', text);
+        getDataFromPrompt(text);
+    }
+
+    const [searchText, setSearchText] = React.useState('');
+
+
+
 
 
 
@@ -438,10 +453,9 @@ const Dashboard = ({ userData, Logout }) => {
                 </div>
                 <div className="user d-flex align-items-center mx-5">
                     <div className="search-bar p-2">
-                        <input className="search-input" type="text" id='search-box' />
-                        <a href="#" className="search_icon">
-                            <div className="fa fa-search"></div>
-                        </a>
+                        <input className={`search-input ${searchText.length>0 ? 'search-box-expanded' : ''}`} id="search-box" type="text" onKeyUp={(e) => setSearchText(e.target.value)} />
+                        <button className="search-icon btn fa fa-search" onClick={getGeneratedText}>
+                        </button>
                     </div>
                     <SpeechToText 
                         setText={setTextInsearchBox}
