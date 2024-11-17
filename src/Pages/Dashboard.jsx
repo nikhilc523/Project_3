@@ -6,12 +6,13 @@ import UserImage from '../images/user.jpg';
 import { useNavigate } from 'react-router-dom';
 import { storage, ref, uploadBytes, getDownloadURL, db } from '../firebase-config';
 import { doc, getDoc, setDoc, collection, getDocs, query, where } from 'firebase/firestore';
-import axios from 'axios';
+import axios, { all } from 'axios';
 import Card from '../Components/Card';
 import './css/takefive.min.css';
 import SpeechToText from '../Components/SpeechToText';
 import { GoogleGenerativeAI } from '@google/generative-ai'
 import { ToastContainer, toast, Flip } from 'react-toastify';
+import { JsonData } from '../Components/JsonData';
 // import google speech to text
 
 const Dashboard = ({ userData, Logout }) => {
@@ -22,6 +23,25 @@ const Dashboard = ({ userData, Logout }) => {
     const [lablesPerLine, setLablesPerLine] = React.useState([]);
     const [fetchingData, setFetchingData] = React.useState(false);
     const navigate = useNavigate();
+    const [wittyText, setWittyText] = React.useState('');
+    const [wittyTextLoader, setWittyTextLoader] = React.useState(false);
+    const [searchResults, setSearchResults] = React.useState([]);
+
+
+    function getSelectedLables(labels) {
+        let images = []
+        // strip white spaces and new lines
+        labels = labels.map(label => label.replace(/\s+$/g, '').toLowerCase());
+        imageMetadata.forEach((data) => {
+            let l = data.imageLables;
+            l = l.map(label => label.toLowerCase());
+            let found =  l.some(r=> labels.includes(r));
+            if (found) {
+                images.push(data);
+            }
+        });
+        setSearchResults(images);
+    }
 
     useEffect(() => {
         let user = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null;
@@ -32,16 +52,40 @@ const Dashboard = ({ userData, Logout }) => {
         }
     }, []);
 
-    const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
     
     async function getDataFromPrompt(prompt) {
+        const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY);
+        const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
         if(!prompt){
             return;
         }
         console.log('Prompt:', prompt);
-        const result = await model.generateContent(prompt);
-        console.log(result.response.text());
+        const result = await model.generateContent([prompt]);
+        let response = result.response.text()
+        // setWittyText(response);
+        console.log('Witty Text:', response);
+        return response;
+    }
+
+
+    async function getMeAllMatchingLables(search){
+        setFetchingData(true);
+        let lables = lablesPerLine.flat();
+        let allLabels = lables.map(label => label.toLowerCase());
+        // unique lables
+        allLabels = [...new Set(allLabels)];
+        allLabels = allLabels.join(',');
+        console.log('All Labels:', allLabels);
+        let prompt = `
+        return exact lables
+        only return me all lables that are matched to the search text ${search} from the following list of lables ${allLabels}
+        `
+        let result = await getDataFromPrompt(prompt);
+        console.log(result);
+        let matchedLables = result.split(', ');
+        console.log(matchedLables);
+        getSelectedLables(matchedLables);
+        setFetchingData(false);
     }
 
     
@@ -141,28 +185,28 @@ const Dashboard = ({ userData, Logout }) => {
                 const userDoc = await getDoc(userRef);
                 if (userDoc.exists()) {
                     console.log("Image metadata already exists in Firestore");
-                    continue;
                 }
 
 
 
                 // Upload the image to Firebase Storage
                 const downloadURL = await uploadImage(ImageData[i].imageUrl, ImageData[i].userId, ImageData[i].id);
-
+                ImageData[i].faceBookImageUrl = ImageData[i].imageUrl;
                 ImageData[i].imageUrl = downloadURL;
                 // Store image metadata in Firestore
+                console.log("Storing image metadata in Firestore", ImageData[i]);
                 await setDoc(userRef, {
                     ...ImageData[i],
                 }, { merge: true });
             }
-            getAndSaveVisionApiResults();
             console.log("Image metadata stored successfully in Firestore " +ImageData.length + " images");
+            getAndSaveVisionApiResults();
         } catch (error) {
             console.error("Error storing image metadata in Firestore", error);
         }
     }
 
-    async function processFacebookImage() {
+    async function processFacebookImage(facebookData) {
         toastSucessMessage('Fetching Facebook Image');
         try {
             
@@ -172,7 +216,8 @@ const Dashboard = ({ userData, Logout }) => {
 
 
             var facebookImages = [];
-            var photos = userData.albums[0].photos.data;
+            var photos = facebookData.albums.data[0].photos.data;
+            console.log('Photos:', photos);
             photos.forEach(photo => {
                 let id = photo.images[0].source.split('/').pop().split('?')[0].split('.')[0];
                 console.log(photo.images[0].source);
@@ -186,8 +231,7 @@ const Dashboard = ({ userData, Logout }) => {
                     userId: userId,
                     height: photo.images[0].height,
                     width: photo.images[0].width,
-                }
-                );
+                });
             });
             console.log(facebookImages);
 
@@ -202,6 +246,7 @@ const Dashboard = ({ userData, Logout }) => {
                 if (!img) {
                     FaceBookImagesToUpload.push(image);
                 }else{
+                    // FaceBookImagesToUpload.push(image);
                     imagesExists++;
                 }
             });
@@ -211,23 +256,33 @@ const Dashboard = ({ userData, Logout }) => {
             console.log(FaceBookImagesToUpload);
 
             // upload image to firebase storage ImageMetadata
-            storeImagesToFirestore(facebookImages);
+            storeImagesToFirestore(FaceBookImagesToUpload);
             
 
         } catch (error) {
             console.error("Error processing Facebook image", error);
-            fetchingData(false);
+            setFetchingData(false);
         }
     }
 
     async function fetchFaceBookData() {
         setFetchingData(true);
         window.FB.getLoginStatus(function (response) {
-            console.log('User is loggedd in');
-            console.log(response)
-            if (response.status === 'connected') {
-                processFacebookImage();
-
+            let facebookData = {};
+            // console.log('User is loggedd in');
+            // console.log(response)
+            if (response.status === 'connected' && 0) {
+                console.log('User is logged in');
+                window.FB.api(
+                    '/me',
+                    'GET',
+                    { "fields": "id,name,albums{photos.limit(100){images,link,name,created_time}},email,birthday,gender" },
+                    function (response) {
+                        console.log(response)
+                        facebookData = response;
+                        processFacebookImage(facebookData);
+                    }
+                );
             }else{
                 console.log('User is not logged in');
                 window.FB.logout();
@@ -237,15 +292,16 @@ const Dashboard = ({ userData, Logout }) => {
                         window.FB.api(
                             '/me',
                             'GET',
-                            { "fields": "id,name,albums{photos.limit(10){images,link,name,created_time}},email,birthday,gender" },
+                            { "fields": "id,name,albums{photos.limit(100){images,link,name,created_time}},email,birthday,gender" },
                             function (response) {
-                                console.log('Facebook API response:', response);
+                                console.log(response)
+                                facebookData = response;
+                                processFacebookImage(facebookData);
                             }
                         );
                     
                     }
                 });
-                processFacebookImage();
             }
         });
     };
@@ -265,15 +321,14 @@ const Dashboard = ({ userData, Logout }) => {
         console.log('Query Snapshot:', imageMetadata);
 
         imageMetadata.forEach(async (data) => {
-            if(data.gotVisionApiResults){
-                console.log('Vision API Results already exists');
-                setFetchingData(false);
-                return;
-            }
             let id = data.id;
             let imageUrl = data.imageUrl;
             let userId = data.userId;
             let visionApiResults = [];
+            if (data.gotVisionApiResults) {
+                console.log('Vision API Results already exists in Firestore');
+                return;
+            }
             try {
                 const response = await axios.post(
                     `https://vision.googleapis.com/v1/images:annotate?key=${apiKey}`,
@@ -302,6 +357,7 @@ const Dashboard = ({ userData, Logout }) => {
                 );
                 visionApiResults = response.data.responses[0];
                 console.log('Vision API Results:', visionApiResults);
+                console.log('Image data:', data);
             } catch (error) {
                 console.error("Error getting Vision API results", error);
             }
@@ -336,7 +392,7 @@ const Dashboard = ({ userData, Logout }) => {
             
         });
         setFetchingData(false);
-
+        processLables();
         
         
     }
@@ -358,6 +414,7 @@ const Dashboard = ({ userData, Logout }) => {
             { merge: true }
             );
         });
+        getImageMetadata(true);
 
     }
     useEffect(() => {
@@ -434,18 +491,42 @@ const Dashboard = ({ userData, Logout }) => {
     function getGeneratedText(){
         let text = document.getElementById('search-box').value;
         console.log('Generating Text:', text);
-        getDataFromPrompt(text);
+        // getDataFromPrompt(text);
+        getMeAllMatchingLables(text);
+    }
+
+    async function preparePrompt(index){
+        setWittyTextLoader(true);
+        try {
+
+            let prompt = JsonData(imageMetadata[index].visionApiResults);
+
+            let result = await getDataFromPrompt(prompt);
+            setWittyText(result);
+        }
+        catch (error) {
+            console.error('Error preparing prompt:', error);
+        }
+        setWittyTextLoader(false);
+        
     }
 
     const [searchText, setSearchText] = React.useState('');
 
 
+    const dominantColor = () => {
+        let colorCode = activeImage?.visionApiResults?.imagePropertiesAnnotation?.dominantColors?.colors[0]?.color;
+        console.log('Dominant Color:', colorCode);
+        console.log(activeImage)
+        return 'rgb(' + colorCode?.red + ',' + colorCode?.green + ',' + colorCode?.blue + ',0.8)';
+    }
 
 
 
 
     return !loading ? (
         <div className="container-fluid w-100 p-0 m-0">
+            {/* <ToastContainer /> */}
             <div className="header px-4 py-2 d-flex justify-content-between align-items-center bg-black">
                 <div className="company-name d-flex align-items-center">
                     <img src={FotoNestIcon} alt="logo" className="logo" width="30px" height="30px" />
@@ -460,19 +541,6 @@ const Dashboard = ({ userData, Logout }) => {
                     <SpeechToText 
                         setText={setTextInsearchBox}
                     />
-                    <div className="nav">
-                        <ul className="nav justify-content-around">
-                            <li className="nav-item">
-                                <Link className="nav-link text-white" to="#">B2B Memories</Link>
-                            </li>
-                            <li className="nav-item">
-                                <Link className="nav-link text-white" to="#">People</Link>
-                            </li>
-                            <li className="nav-item">
-                                <Link className="nav-link text-white" to="#">Explore</Link>
-                            </li>
-                        </ul>
-                    </div>
                     <div className="dropdown">
                         <button
                             className="btn dropdown-toggle"
@@ -486,12 +554,14 @@ const Dashboard = ({ userData, Logout }) => {
                         </button>
                         <div className="dropdown-menu" aria-labelledby="dropdownMenuButton">
                             <Link className="dropdown-item" to="#">{userData?.name}</Link>
-                            <Link className="dropdown-item" onClick={() => toastPromise(fetchFaceBookData)} to="#">Fetch data</Link>
+                            <Link className="dropdown-item" onClick={() => fetchFaceBookData()} to="#">Fetch data</Link>
                             <Link className="dropdown-item" onClick={handleLogout} to="/">Logout</Link>
                             {/* start speech */}
                             {/* <Link className="dropdown-item" onClick={getTextFromSpeechRealTime} to="#">Speech to Text</Link>
                             {/* end speech */}
                             {/* <Link className="dropdown-item" onClick={endSpeechToText} to="#">End Speech to Text</Link> */} 
+                            <Link className="dropdown-item" onClick={preparePrompt} to="#">Generate Text</Link>
+                            <Link className="dropdown-item" onClick={() => toastSucessMessage("hello")} to="#">tosdt Text</Link>
                         </div>
                     </div>
                 </div>
@@ -502,7 +572,7 @@ const Dashboard = ({ userData, Logout }) => {
                         <div key={index} className="image-lables">
                             <marquee behavior="alternate" direction={index % 2 === 0 ? "left" : "right"} loop="infinite" scrollamount="3">
                                 {line.map((label, index) => (
-                                    <span key={index} className="btn rounded-pill bg-light mx-1">{label}</span>
+                                    <span key={index} className="btn rounded-pill bg-light mx-1" onClick={() => getSelectedLables([label])}>{label}</span>
                                 ))}
                             </marquee>
                         </div>
@@ -512,26 +582,57 @@ const Dashboard = ({ userData, Logout }) => {
             <div className="container-fluid w-100 p-0 m-0">
                 {fetchingData ? (
                     <div className="container-fluid w-100 p-0 m-0 d-flex justify-content-center align-items-center">
-                        <div class="loader"></div>
+                        <div className='loader'></div>
                     </div>
                 ) : (
-                <div className="image-gallery">
-                    <ul className="cards">
-                    {imageMetadata.map((image, index) => (
-                        <Card
-                            key={index}
-                            image={image.imageUrl}
-                            thumb={image.imageUrl}
-                            title={image.id}
-                            tagline={image.created_time}
-                            status={image.gotVisionApiResults ? 'Processed' : 'Not Processed'}
-                            description={image.imageLables}
-                            timeAgo={image.created_time}
-                            openImage={openImageOverlay}
-                            index={index}
-                        />
-                    ))}
+                <div>
+                {searchResults.length > 0 ? 
+                        (
+                            <div className="container-fluid w-100 p-0 m-0 d-flex justify-content-end align-items-center">
+                                <button className="btn btn-dark mb-3 mx-3" onClick={() => setSearchResults([])}>Clear Filter</button>
+                            </div>
+                        ) : null
+                }
+                <div className="">
+                    <ul className="image-gallery gallery">
+                        {
+                            searchResults.length > 0 ? 
+                            searchResults.map((image, index) => (
+                                <Card
+                                    key={index}
+                                    image={image.imageUrl}
+                                    thumb={image.imageUrl}
+                                    title={image.id}
+                                    tagline={image.created_time}
+                                    status={image.gotVisionApiResults ? 'Processed' : 'Not Processed'}
+                                    description={image.imageLables}
+                                    timeAgo={image.created_time}
+                                    openImage={openImageOverlay}
+                                    index={index}
+                                    height={image.height}
+                                    width={image.width}
+                                />
+                            ))
+                            :
+                            imageMetadata.map((image, index) => (
+                                <Card
+                                    key={index}
+                                    image={image.imageUrl}
+                                    thumb={image.imageUrl}
+                                    title={image.id}
+                                    tagline={image.created_time}
+                                    status={image.gotVisionApiResults ? 'Processed' : 'Not Processed'}
+                                    description={image.imageLables}
+                                    timeAgo={image.created_time}
+                                    openImage={openImageOverlay}
+                                    index={index}
+                                    height={image.height}
+                                    width={image.width}
+                                />
+                            ))
+                        }
                     </ul>
+                </div>
                 </div>
                 )}
             </div>
@@ -539,7 +640,7 @@ const Dashboard = ({ userData, Logout }) => {
             {/* Image ovelay */}
 
             <section itemscope itemtype="https://schema.org/ImageGallery">
-                <article className="foyer verbose slide" id="open-image" itemprop="image" itemscope itemtype="https://schema.org/ImageObject">
+                <article className="foyer verbose slide" id="open-image" itemprop="image" itemscope itemtype="https://schema.org/ImageObject" style={{ display: activeImage ? 'block' : 'none', backgroundColor: dominantColor() }}>    
                     <header>
                         <h2>Slide 5 of 10</h2>
                     </header>
@@ -548,18 +649,16 @@ const Dashboard = ({ userData, Logout }) => {
                         <figcaption itemprop="caption">The old castle</figcaption>
                     </figure>
                     <article className="roomy">
-                        <div class="loader"></div>
-                        <h3>Lorem ipsum</h3>
-                        <p>Lorem ipsum dolor sit amet, consectetur adipiscing elit. Proin sagittis libero et nulla ultricies,
-                            vitae interdum diam vestibulum. Sed ut convallis est, ac tristique turpis. Fusce ipsum est, fermentum in facilisis imperdiet, tincidunt ac justo. Nunc quis tortor sed nunc ornare ornare.</p>
-
-                        <p>Nullam accumsan ipsum risus, sed auctor enim varius eu. In ipsum sem, suscipit eget tortor nec,
-                            laoreet auctor metus. Integer quis erat nisl. In hac habitasse platea dictumst. Phasellus a finibus
-                            libero. Etiam lacus elit, tempor nec elit eu, bibendum dignissim magna.</p>
-                        <p>Phasellus nec odio velit. In hac habitasse platea dictumst. Aliquam blandit nec nulla a aliquam.
-                            Donec eget erat a leo dapibus egestas sed a nunc. Phasellus elementum laoreet urna, vel porttitor
-                            lectus iaculis vitae. Duis a euismod lorem. Pellentesque quis auctor eros, at mollis mauris. Etiam
-                            sit amet finibus nulla. Cras at mi vitae lorem ultricies tristique.</p>
+                        {/* button to generate witty message */}
+                        <button className="btn btn-primary" onClick={() => preparePrompt(activeImage.index)} >Generate Witty Text</button>
+                        {wittyTextLoader ? <div className='loader'></div> : <p>{wittyText}</p>}
+                        <h3>From Image</h3>
+                        <p >
+                            {/*no of faces in image */}
+                            {activeImage?.visionApiResults?.faceAnnotations?.length} faces detected <br />
+                            Detected Text: <br />{activeImage?.visionApiResults?.textAnnotations?.map((text) => text.description).join(', ')} <br />
+                            Detected Labels:<br /> {activeImage?.imageLables?.join(', ')} <br />
+                        </p>
                     </article>
                     <nav>
                         <a href="#nowhere" rel="parent">Memories</a>
@@ -573,7 +672,7 @@ const Dashboard = ({ userData, Logout }) => {
         </div>
     ) : (
         <div className="container-fluid w-100 p-0 m-0 d-flex justify-content-center align-items-center" style={{ height: '100vh' }}>
-            <div class="loader"></div>
+            <div className='loader'></div>
         </div>
     )
 };
