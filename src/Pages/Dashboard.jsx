@@ -642,11 +642,10 @@ const Dashboard = ({ userData, Logout }) => {
             <section itemscope itemtype="https://schema.org/ImageGallery">
                 <article className="foyer verbose slide" id="open-image" itemprop="image" itemscope itemtype="https://schema.org/ImageObject" style={{ display: activeImage ? 'block' : 'none', backgroundColor: dominantColor() }}>    
                     <header>
-                        <h2>Slide 5 of 10</h2>
+                        <h2>{activeImage?.id}</h2>
                     </header>
                     <figure>
                         <img src={activeImage?.imageUrl} alt={activeImage?.id} itemprop="contentUrl" />
-                        <figcaption itemprop="caption">The old castle</figcaption>
                     </figure>
                     <article className="roomy">
                         {/* button to generate witty message */}
