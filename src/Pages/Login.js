@@ -8,6 +8,13 @@ import Explore from '../images/explore.jpg';
 import Surprise from '../images/surprise.jpg';
 import FotoNestLogo from '../images/fotoNestLogo.jpg';
 
+/**
+ * Login component for the FotoNest application
+ * @component
+ * @param {Object} props - Component props
+ * @param {Function} props.onLogin - Callback function triggered after successful Facebook login
+ * @returns {JSX.Element} Login page with hero section and features
+ */
 const Login = ({ onLogin }) => { // Add onLogin prop
 
     const navigate = useNavigate();
@@ -18,6 +25,12 @@ const Login = ({ onLogin }) => { // Add onLogin prop
         navigate('/dashboard');
     }
 
+    /**
+     * Handles the Facebook login response
+     * @param {Object} response - Response object from Facebook login
+     * @param {string} response.accessToken - Facebook access token
+     * @param {Object} response.profile - User profile information
+     */
     const responseFacebook = (response) => {
         console.log('Facebook login response:', response);
         // Implement Facebook login logic here

@@ -1,12 +1,17 @@
+/**
+ * Extracts and formats relevant data from Google Cloud Vision API results
+ * @param {Object} apiResults - Raw API results from Google Cloud Vision
+ * @returns {Object} Formatted object containing important data points
+ */
 function extractImportantData(apiResults) {
   const importantData = {};
 
-  // Extract text annotations descriptions
+  // Extract text found in the image (OCR results)
   if (Array.isArray(apiResults.textAnnotations)) {
     importantData.textAnnotations = apiResults.textAnnotations.map(annotation => annotation.description);
   }
 
-  // Extract face annotations likelihoods
+  // Extract facial expressions and characteristics
   if (Array.isArray(apiResults.faceAnnotations)) {
     importantData.faceAnnotations = apiResults.faceAnnotations.map(face => ({
       joyLikelihood: face.joyLikelihood ? face.joyLikelihood : 'UNKNOWN',
@@ -18,12 +23,12 @@ function extractImportantData(apiResults) {
     }));
   }
 
-  // Extract label annotations descriptions
+  // Extract object and scene labels detected in the image
   if (Array.isArray(apiResults.labelAnnotations)) {
     importantData.labelAnnotations = apiResults.labelAnnotations.map(label => label.description);
   }
 
-  // Extract safe search annotations
+  // Extract content safety ratings
   if (apiResults.safeSearchAnnotation) {
     importantData.safeSearchAnnotation = {
       adult: apiResults.safeSearchAnnotation.adult ? apiResults.safeSearchAnnotation.adult : 'UNKNOWN',
@@ -36,13 +41,22 @@ function extractImportantData(apiResults) {
 
   return importantData;
 }
-export  function JsonData(data) {
-  let impVisioApiData = extractImportantData(data);
 
+/**
+ * Generates a prompt for GPT to create witty messages based on image analysis
+ * @param {Object} data - Processed Vision API results
+ * @returns {string} Formatted prompt string for GPT
+ */
+export function JsonData(data) {
+  // Process and stringify the Vision API data
+  let impVisioApiData = extractImportantData(data);
   impVisioApiData = JSON.stringify(impVisioApiData);
+
+  // Log the processed data for debugging
   console.log(impVisioApiData);
 
-    let prompt = `
+  // Construct the prompt template with instructions and example
+  let prompt = `
 You are an AI trained to generate witty, emotionally relevant messages based on visual content and metadata. For the given image and its associated metadata, craft a message that reflects the human emotion conveyed in the photo. The message should be creative, relevant, and engaging. Use the metadata to enrich the context of the message.
 
 Here is the metadata for the image:
@@ -78,8 +92,8 @@ give back only the message
 do not mention about the metadata in the response.
 `
 
-    console.log(prompt);
-    return prompt;
+  console.log(prompt);
+  return prompt;
 }
 
 

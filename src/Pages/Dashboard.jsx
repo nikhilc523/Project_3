@@ -11,38 +11,53 @@ import Card from '../Components/Card';
 import './css/takefive.min.css';
 import SpeechToText from '../Components/SpeechToText';
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { ToastContainer, toast, Flip } from 'react-toastify';
+import { ToastContainer, toast, Bounce } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import { JsonData } from '../Components/JsonData';
 // import google speech to text
 
+/**
+ * Dashboard Component - Main application interface for FotoNest
+ * Manages image gallery, search, AI analysis, and user interactions
+ */
 const Dashboard = ({ userData, Logout }) => {
 
+    // State management for various features
     const [loading, setLoading] = React.useState(true);
-
-    const [imageMetadata, setImageMetadata] = React.useState([]);
-    const [lablesPerLine, setLablesPerLine] = React.useState([]);
+    const [imageMetadata, setImageMetadata] = React.useState([]); // Stores all image data
+    const [lablesPerLine, setLablesPerLine] = React.useState([]); // Labels organized for display
     const [fetchingData, setFetchingData] = React.useState(false);
     const navigate = useNavigate();
     const [wittyText, setWittyText] = React.useState('');
     const [wittyTextLoader, setWittyTextLoader] = React.useState(false);
     const [searchResults, setSearchResults] = React.useState([]);
 
-
+    /**
+     * Filters and returns images based on provided labels
+     * @param {string[]} labels - Array of labels to filter images by
+     * @returns {void} - Updates searchResults state with filtered images
+     */
     function getSelectedLables(labels) {
         let images = []
-        // strip white spaces and new lines
+        // Normalize labels by removing whitespace and converting to lowercase
         labels = labels.map(label => label.replace(/\s+$/g, '').toLowerCase());
         imageMetadata.forEach((data) => {
+            // Convert image labels to lowercase for case-insensitive comparison
             let l = data.imageLables;
             l = l.map(label => label.toLowerCase());
+            // Check if any of the search labels match the image labels
             let found =  l.some(r=> labels.includes(r));
             if (found) {
                 images.push(data);
             }
         });
         setSearchResults(images);
+        console.log('Search Results:', images);
     }
 
+    /**
+     * Authentication check on component mount
+     */
     useEffect(() => {
         let user = localStorage.getItem('user') ? JSON.parse(localStorage.getItem('user')) : null;
         if (!user) {
@@ -52,7 +67,10 @@ const Dashboard = ({ userData, Logout }) => {
         }
     }, []);
 
-    
+    /**
+     * Generates AI content using Google's Gemini API
+     * @param {string} prompt - Input prompt for AI generation
+     */
     async function getDataFromPrompt(prompt) {
         const genAI = new GoogleGenerativeAI(process.env.REACT_APP_GEMINI_API_KEY);
         const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
@@ -67,33 +85,41 @@ const Dashboard = ({ userData, Logout }) => {
         return response;
     }
 
-
+    /**
+     * Processes search text to find matching labels
+     * @param {string} search - Search query text
+     */
     async function getMeAllMatchingLables(search){
         setFetchingData(true);
+        // Get all unique labels from images
         let lables = lablesPerLine.flat();
         let allLabels = lables.map(label => label.toLowerCase());
-        // unique lables
         allLabels = [...new Set(allLabels)];
         allLabels = allLabels.join(',');
-        console.log('All Labels:', allLabels);
+        
+        // Construct prompt for AI to find matching labels
         let prompt = `
         return exact lables
-        only return me all lables that are matched to the search text ${search} from the following list of lables ${allLabels}
+        only return me all lables that are matched to the search text ${search} from the following list of lables
+        in a single line plain text with no backtick seperated by comma 
+        ${allLabels}
+        seperated by comma
         `
+        // Get AI response and process matches
         let result = await getDataFromPrompt(prompt);
-        console.log(result);
-        let matchedLables = result.split(', ');
-        console.log(matchedLables);
+        result = result.replace(/\n$/, '');
+        let matchedLables = result.split(',');
+        
+        // Filter images based on matched labels
         getSelectedLables(matchedLables);
         setFetchingData(false);
+        setSelectedLable(search);
     }
 
-    
-
-
-
-
-
+    /**
+     * Fetches and updates image metadata from Firestore
+     * @param {boolean} refresh - Force refresh flag
+     */
     async function getImageMetadata(refresh=false) {
         if(!refresh){
             return;
@@ -132,13 +158,15 @@ const Dashboard = ({ userData, Logout }) => {
             setLablesPerLine(lines);
             console.log("Image Labels:", lables);
             setLoading(false);
-            toastSucessMessage('Image Metadata fetched successfully');
+            // toastSucessMessage('Image Metadata fetched successfully');
         } catch (error) {
             console.error("Error getting image metadata", error);
         }
     }
 
-
+    /**
+     * Handles user logout and Facebook disconnect
+     */
     const handleLogout = () => {
         Logout();
         window.FB.getLoginStatus(function (response) {
@@ -152,6 +180,12 @@ const Dashboard = ({ userData, Logout }) => {
         navigate('/');
     };
 
+    /**
+     * Uploads image to Firebase Storage
+     * @param {string} imageUrl - Source image URL
+     * @param {string} userId - User identifier
+     * @param {string} imageName - Name for stored image
+     */
     async function uploadImage(imageUrl, userId, imageName) {
         try {
             // Download the image using axios
@@ -174,10 +208,18 @@ const Dashboard = ({ userData, Logout }) => {
         }
     }
 
+    /**
+     * Stores image metadata in Firestore
+     * @param {Array} ImageData - Array of image metadata objects
+     */
     async function storeImagesToFirestore(ImageData) {
+        if (ImageData.length === 0) {
+            toastSucessMessage('No new images to store in Firestore');
+            return;
+        }
         try {
             // Loop through each image
-            toastSucessMessage('Storing Image Metadata in Firestore');
+            toast.info('Found ' + ImageData.length + ' new images');
             for (let i = 0; i < ImageData.length; i++) {
                 const userRef = doc(db, "imageMetadata", ImageData[i].id);
 
@@ -198,6 +240,7 @@ const Dashboard = ({ userData, Logout }) => {
                 await setDoc(userRef, {
                     ...ImageData[i],
                 }, { merge: true });
+                toastSucessMessage('Image metadata stored successfully in Firestore');
             }
             console.log("Image metadata stored successfully in Firestore " +ImageData.length + " images");
             getAndSaveVisionApiResults();
@@ -206,22 +249,26 @@ const Dashboard = ({ userData, Logout }) => {
         }
     }
 
+    /**
+     * Handles Facebook image processing and storage
+     * @param {Object} facebookData - Facebook API response containing image data
+     * @returns {Promise<void>} - Processes and stores images in Firebase
+     */
     async function processFacebookImage(facebookData) {
-        toastSucessMessage('Fetching Facebook Image');
         try {
             
             var userId = userData.id;
             
             await getImageMetadata();
-
-
+            
+            
             var facebookImages = [];
             var photos = facebookData.albums.data[0].photos.data;
             console.log('Photos:', photos);
             photos.forEach(photo => {
                 let id = photo.images[0].source.split('/').pop().split('?')[0].split('.')[0];
                 console.log(photo.images[0].source);
-
+                
                 console.log(id);
                 facebookImages.push({
                     id: id,
@@ -234,9 +281,9 @@ const Dashboard = ({ userData, Logout }) => {
                 });
             });
             console.log(facebookImages);
-
+            
             // face book image data not uploaded to firebase storage
-
+            
             var FaceBookImagesToUpload = [];
             let imagesExists = 0;
             facebookImages.forEach(async (image) => {
@@ -254,8 +301,9 @@ const Dashboard = ({ userData, Logout }) => {
             console.log('Images Already Exists in Firestore: '+imagesExists);
             console.log('FaceBookImagesToUpload');
             console.log(FaceBookImagesToUpload);
-
+            
             // upload image to firebase storage ImageMetadata
+            toastSucessMessage('Fetched Facebook Images');
             storeImagesToFirestore(FaceBookImagesToUpload);
             
 
@@ -265,6 +313,11 @@ const Dashboard = ({ userData, Logout }) => {
         }
     }
 
+    /**
+     * Fetches user's Facebook photos
+     * Handles Facebook authentication and API calls
+     * @returns {Promise<void>} - Initiates Facebook data processing
+     */
     async function fetchFaceBookData() {
         setFetchingData(true);
         window.FB.getLoginStatus(function (response) {
@@ -300,26 +353,31 @@ const Dashboard = ({ userData, Logout }) => {
                             }
                         );
                     
+                    }else{  
+                        toast.error('User cancelled login or did not fully authorize.');
+                        setFetchingData(false);
                     }
                 });
             }
         });
     };
 
+    /**
+     * Processes and analyzes images using Google Vision API
+     */
     async function getAndSaveVisionApiResults() {
 
-        toastSucessMessage('Getting Data from Cloud Vision API');
-
+        
         console.log('Getting Vision API Started');
-
+        
         await getImageMetadata();
 
-
-
+        
+        
         var apiKey = process.env.REACT_APP_GOOGLE_VISION_API_KEY;
         console.log('API Key:', apiKey);
         console.log('Query Snapshot:', imageMetadata);
-
+        
         imageMetadata.forEach(async (data) => {
             let id = data.id;
             let imageUrl = data.imageUrl;
@@ -349,7 +407,7 @@ const Dashboard = ({ userData, Logout }) => {
                                     { type: 'SAFE_SEARCH_DETECTION' },
                                     { type: 'IMAGE_PROPERTIES' },
                                     { type: 'CROP_HINTS' }
-
+                                    
                                 ],
                             },
                         ],
@@ -358,6 +416,7 @@ const Dashboard = ({ userData, Logout }) => {
                 visionApiResults = response.data.responses[0];
                 console.log('Vision API Results:', visionApiResults);
                 console.log('Image data:', data);
+                toastSucessMessage('Successfully fetched Vision API results');
             } catch (error) {
                 console.error("Error getting Vision API results", error);
             }
@@ -385,6 +444,7 @@ const Dashboard = ({ userData, Logout }) => {
                 },
                 { merge: true }
                 );
+                console.log('Vision API Results stored in Firestore');
             } catch (error) {
                 console.error("Error storing Vision API results in Firestore", error);
 
@@ -396,6 +456,11 @@ const Dashboard = ({ userData, Logout }) => {
         
         
     }
+
+    /**
+     * Processes and stores image labels from Vision API results
+     * @returns {Promise<void>} Updates image metadata with processed labels
+     */
     async function processLables(){
         const q = query(collection(db, "imageMetadata"), where("userId", "==", userData.id));
         const querySnapshot = await getDocs(q);
@@ -424,23 +489,38 @@ const Dashboard = ({ userData, Logout }) => {
 
     const [activeImage, setActiveImage] = React.useState(null);
 
+    // Image navigation and display functions
+    /**
+     * Handles image overlay navigation
+     * @param {number} index - Index of image to display
+     */
     function openImageOverlay(index) {
         console.log('Open Image Overlay:', index);
         console.log('Image Metadata:', imageMetadata[index]);
         setActiveImage(imageMetadata[index]);
     }
 
+    /**
+     * Navigates to next image in overlay
+     */
     function nextImage() {
         console.log('Next Image');
         setActiveImage(imageMetadata[(activeImage.index + 1) % imageMetadata.length]);
     }
 
+    /**
+     * Navigates to previous image in overlay
+     */
     function previousImage() {
 
         console.log('Previous Image');
         setActiveImage(imageMetadata[(activeImage.index - 1 + imageMetadata.length) % imageMetadata.length]);
     }
 
+    /**
+     * Updates search box with provided text
+     * @param {string} text - Text to set in search box
+     */
     function setTextInsearchBox(text){
         // clear search box
         document.getElementById('search-box').value = '';
@@ -450,22 +530,21 @@ const Dashboard = ({ userData, Logout }) => {
         setSearchText(text);
     }
 
+    /**
+     * Displays success toast message
+     * @param {string} msg - Message to display
+     */
     function toastSucessMessage(msg) {
-        toast.success(msg, {
-            position: "bottom-right",
-            autoClose: 5000,
-            hideProgressBar: true,
-            closeOnClick: true,
-            pauseOnHover: true,
-            draggable: true,
-            progress: undefined,
-            theme: "light",
-            transition: Flip,
-        });
+        toast.success(msg);
     }
 
     
 
+    /**
+     * Wraps function execution in a Promise
+     * @param {Function} func - Function to execute
+     * @returns {Promise} Promise wrapping the function execution
+     */
     function returnPromise(func){
         return new Promise((resolve, reject) => {
             try {
@@ -477,6 +556,10 @@ const Dashboard = ({ userData, Logout }) => {
         });
     }
 
+    /**
+     * Displays toast with promise status
+     * @param {Function} func - Function to execute with toast feedback
+     */
     function toastPromise(func){
         toast.promise(
             returnPromise(func),
@@ -488,6 +571,9 @@ const Dashboard = ({ userData, Logout }) => {
         )
     }
 
+    /**
+     * Initiates label matching based on search input
+     */
     function getGeneratedText(){
         let text = document.getElementById('search-box').value;
         console.log('Generating Text:', text);
@@ -495,6 +581,10 @@ const Dashboard = ({ userData, Logout }) => {
         getMeAllMatchingLables(text);
     }
 
+    /**
+     * Prepares and generates AI prompt for image description
+     * @param {number} index - Index of image to generate description for
+     */
     async function preparePrompt(index){
         setWittyTextLoader(true);
         try {
@@ -514,6 +604,10 @@ const Dashboard = ({ userData, Logout }) => {
     const [searchText, setSearchText] = React.useState('');
 
 
+    /**
+     * Gets dominant color from active image for overlay background
+     * @returns {string} RGB color string
+     */
     const dominantColor = () => {
         let colorCode = activeImage?.visionApiResults?.imagePropertiesAnnotation?.dominantColors?.colors[0]?.color;
         console.log('Dominant Color:', colorCode);
@@ -521,27 +615,88 @@ const Dashboard = ({ userData, Logout }) => {
         return 'rgb(' + colorCode?.red + ',' + colorCode?.green + ',' + colorCode?.blue + ',0.8)';
     }
 
+    /**
+     * Handles notification display
+     */
+    const openNotification = () => {
+        toastSucessMessage('Notification');
+    }
 
+    const [selectedLable, setSelectedLable] = React.useState('');
+    /**
+     * Updates selected label and filters images
+     * @param {string} label - Selected label to filter by
+     */
+    function onSelectLabel(label) {
+        setSelectedLable(label);
+        getSelectedLables([label]);
+    }
+
+    /**
+     * Clears current search/filter state
+     */
+    const clearFilter = () => {
+        setSelectedLable('');
+        setSearchResults([]);
+    }
 
 
     return !loading ? (
         <div className="container-fluid w-100 p-0 m-0">
-            {/* <ToastContainer /> */}
-            <div className="header px-4 py-2 d-flex justify-content-between align-items-center bg-black">
+
+            <ToastContainer
+                position="bottom-right"
+                autoClose={5000}
+                hideProgressBar
+                newestOnTop
+                closeOnClick
+                rtl={false}
+                pauseOnFocusLoss
+                draggable
+                pauseOnHover
+                theme="light"
+                transition= {Bounce}
+            />
+            <div className="dashboard-header px-4 py-2 d-flex flex-wrap justify-content-between align-items-center bg-black w-100">
                 <div className="company-name d-flex align-items-center">
-                    <img src={FotoNestIcon} alt="logo" className="logo" width="30px" height="30px" />
-                    <h2 className="company-name mx-2 text-white my-0">FotoNest</h2>
+                    <img src={FotoNestIcon} alt="logo" className="logo" width="50px" height="50px" />
+                    <h2 className="mx-2 text-white my-0">FotoNest</h2>
                 </div>
-                <div className="user d-flex align-items-center mx-5">
-                    <div className="search-bar p-2">
-                        <input className={`search-input ${searchText.length>0 ? 'search-box-expanded' : ''}`} id="search-box" type="text" onKeyUp={(e) => setSearchText(e.target.value)} />
-                        <button className="search-icon btn fa fa-search" onClick={getGeneratedText}>
-                        </button>
+                <div className="user d-flex flex-wrap align-items-center justify-content-end mx-0">
+                    <div className="search d-flex align-items-center justify-content-end">
+
+                        <div className="search-bar d-flex justify-content-between align-items-center">
+                            <img  src={FotoNestIcon} alt="logo" className="mobile-logo mx-2" width="40px" height="40px" />
+                            <input
+                                className={`search-input ${searchText.length > 0 ? 'search-box-expanded' : ''}`}
+                                id="search-box"
+                                type="text"
+                                onKeyUp={(e) => setSearchText(e.target.value)}
+                            />
+                            <button className="search-icon btn fa fa-search" onClick={getGeneratedText}></button>
+                        </div>
+                        <SpeechToText setText={setTextInsearchBox} />
+                        <div className="mobile-dropdown">
+                            <button
+                                className="btn dropdown-toggle"
+                                type="button"
+                                id="dropdownMenuButton"
+                                data-toggle="dropdown"
+                                aria-haspopup="true"
+                                aria-expanded="false"
+                            >
+                                <img src={UserImage} className="rounded-circle" alt="user" width="30px" height="30px" />
+                            </button>
+                            <div className="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                                <Link className="dropdown-item" to="#">{userData?.name}</Link>
+                                <Link className="dropdown-item" onClick={() => fetchFaceBookData()} to="#">Fetch data</Link>
+                                {/* open notification */}
+                                <button className="dropdown-item" onClick={openNotification}>Notification</button>
+                                <Link className="dropdown-item" onClick={handleLogout} to="/">Logout</Link>
+                            </div>
+                        </div>
                     </div>
-                    <SpeechToText 
-                        setText={setTextInsearchBox}
-                    />
-                    <div className="dropdown">
+                    <div className="web-dropdown">
                         <button
                             className="btn dropdown-toggle"
                             type="button"
@@ -552,27 +707,23 @@ const Dashboard = ({ userData, Logout }) => {
                         >
                             <img src={UserImage} className="rounded-circle" alt="user" width="50px" height="50px" />
                         </button>
-                        <div className="dropdown-menu" aria-labelledby="dropdownMenuButton">
+                        <div className="dropdown-menu dropdown-menu-left" aria-labelledby="dropdownMenuButton">
                             <Link className="dropdown-item" to="#">{userData?.name}</Link>
                             <Link className="dropdown-item" onClick={() => fetchFaceBookData()} to="#">Fetch data</Link>
                             <Link className="dropdown-item" onClick={handleLogout} to="/">Logout</Link>
-                            {/* start speech */}
-                            {/* <Link className="dropdown-item" onClick={getTextFromSpeechRealTime} to="#">Speech to Text</Link>
-                            {/* end speech */}
-                            {/* <Link className="dropdown-item" onClick={endSpeechToText} to="#">End Speech to Text</Link> */} 
-                            <Link className="dropdown-item" onClick={preparePrompt} to="#">Generate Text</Link>
-                            <Link className="dropdown-item" onClick={() => toastSucessMessage("hello")} to="#">tosdt Text</Link>
+                            <button className="dropdown-item" onClick={openNotification}>Notification</button>
                         </div>
                     </div>
                 </div>
             </div>
+
             <div className="container-fluid w-100 p image-lables-marquee my-4 py-3 px-0" style={{ backgroundColor: 'powderblue' }}>
                 
                     {lablesPerLine.map((line, index) => (
                         <div key={index} className="image-lables">
                             <marquee behavior="alternate" direction={index % 2 === 0 ? "left" : "right"} loop="infinite" scrollamount="3">
                                 {line.map((label, index) => (
-                                    <span key={index} className="btn rounded-pill bg-light mx-1" onClick={() => getSelectedLables([label])}>{label}</span>
+                                    <span key={index} className={`btn rounded-pill mx-1 ${selectedLable === label ? "btn-info" : "bg-light"}`} onClick={() => onSelectLabel(label)}>{label}</span>
                                 ))}
                             </marquee>
                         </div>
@@ -589,17 +740,19 @@ const Dashboard = ({ userData, Logout }) => {
                 {searchResults.length > 0 ? 
                         (
                             <div className="container-fluid w-100 p-0 m-0 d-flex justify-content-end align-items-center">
-                                <button className="btn btn-dark mb-3 mx-3" onClick={() => setSearchResults([])}>Clear Filter</button>
+                                        <button className="btn btn-secondary mb-3 mx-3 rounded-pill" onClick={clearFilter}>{selectedLable}
+                                            <i class="fa fa-times-circle ms-2" aria-hidden="true"></i>
+                                        </button>
                             </div>
                         ) : null
                 }
-                <div className="">
-                    <ul className="image-gallery gallery">
+                <div className="d-flex justify-content-center align-items-center">
+                    <ul className="image-gallery gallery px-4 w-100">
                         {
                             searchResults.length > 0 ? 
-                            searchResults.map((image, index) => (
+                            searchResults.map((image) => (
                                 <Card
-                                    key={index}
+                                    key={image.index}
                                     image={image.imageUrl}
                                     thumb={image.imageUrl}
                                     title={image.id}
@@ -608,7 +761,7 @@ const Dashboard = ({ userData, Logout }) => {
                                     description={image.imageLables}
                                     timeAgo={image.created_time}
                                     openImage={openImageOverlay}
-                                    index={index}
+                                    index={image.index}
                                     height={image.height}
                                     width={image.width}
                                 />
@@ -642,7 +795,7 @@ const Dashboard = ({ userData, Logout }) => {
             <section itemscope itemtype="https://schema.org/ImageGallery">
                 <article className="foyer verbose slide" id="open-image" itemprop="image" itemscope itemtype="https://schema.org/ImageObject" style={{ display: activeImage ? 'block' : 'none', backgroundColor: dominantColor() }}>    
                     <header>
-                        <h2>{activeImage?.id}</h2>
+                        <h2>{activeImage?.index + 1} of {imageMetadata.length}</h2>
                     </header>
                     <figure>
                         <img src={activeImage?.imageUrl} alt={activeImage?.id} itemprop="contentUrl" />
