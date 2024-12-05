@@ -22,6 +22,25 @@ import { JsonData } from '../Components/JsonData';
  */
 const Dashboard = ({ userData, Logout }) => {
 
+    // Add tracking function at the top level
+    const trackEvent = (eventName, eventParams = {}) => {
+        if (window.gtag) {
+            window.gtag('event', eventName, {
+                ...eventParams,
+                user_id: userData?.id,
+                timestamp: new Date().toISOString()
+            });
+        }
+    };
+
+    useEffect(() => {
+        // Track page view when dashboard loads
+        trackEvent('page_view', {
+            page_title: 'Dashboard',
+            page_location: window.location.href
+        });
+    }, []);
+
     // State management for various features
     const [loading, setLoading] = React.useState(true);
     const [imageMetadata, setImageMetadata] = React.useState([]); // Stores all image data
@@ -53,6 +72,10 @@ const Dashboard = ({ userData, Logout }) => {
         });
         setSearchResults(images);
         console.log('Search Results:', images);
+        trackEvent('search_by_labels', {
+            labels: labels.join(','),
+            results_count: images.length
+        });
     }
 
     /**
@@ -168,6 +191,7 @@ const Dashboard = ({ userData, Logout }) => {
      * Handles user logout and Facebook disconnect
      */
     const handleLogout = () => {
+        trackEvent('user_logout');
         Logout();
         window.FB.getLoginStatus(function (response) {
             if (response.authResponse) {
@@ -319,6 +343,7 @@ const Dashboard = ({ userData, Logout }) => {
      * @returns {Promise<void>} - Initiates Facebook data processing
      */
     async function fetchFaceBookData() {
+        trackEvent('fetch_facebook_data_start');
         setFetchingData(true);
         window.FB.getLoginStatus(function (response) {
             let facebookData = {};
@@ -334,6 +359,9 @@ const Dashboard = ({ userData, Logout }) => {
                         console.log(response)
                         facebookData = response;
                         processFacebookImage(facebookData);
+                        trackEvent('fetch_facebook_data_complete', {
+                            images_count: facebookData.albums.data[0].photos.data.length
+                        });
                     }
                 );
             }else{
@@ -350,6 +378,9 @@ const Dashboard = ({ userData, Logout }) => {
                                 console.log(response)
                                 facebookData = response;
                                 processFacebookImage(facebookData);
+                                trackEvent('fetch_facebook_data_complete', {
+                                    images_count: facebookData.albums.data[0].photos.data.length
+                                });
                             }
                         );
                     
@@ -366,7 +397,7 @@ const Dashboard = ({ userData, Logout }) => {
      * Processes and analyzes images using Google Vision API
      */
     async function getAndSaveVisionApiResults() {
-
+        trackEvent('vision_api_analysis_start');
         
         console.log('Getting Vision API Started');
         
@@ -453,7 +484,9 @@ const Dashboard = ({ userData, Logout }) => {
         });
         setFetchingData(false);
         processLables();
-        
+        trackEvent('vision_api_analysis_complete', {
+            images_processed: imageMetadata.length
+        });
         
     }
 
@@ -498,6 +531,10 @@ const Dashboard = ({ userData, Logout }) => {
         console.log('Open Image Overlay:', index);
         console.log('Image Metadata:', imageMetadata[index]);
         setActiveImage(imageMetadata[index]);
+        trackEvent('image_view', {
+            image_id: imageMetadata[index].id,
+            image_index: index
+        });
     }
 
     /**
@@ -506,6 +543,10 @@ const Dashboard = ({ userData, Logout }) => {
     function nextImage() {
         console.log('Next Image');
         setActiveImage(imageMetadata[(activeImage.index + 1) % imageMetadata.length]);
+        trackEvent('image_navigation', {
+            direction: 'next',
+            image_id: activeImage.id
+        });
     }
 
     /**
@@ -515,6 +556,10 @@ const Dashboard = ({ userData, Logout }) => {
 
         console.log('Previous Image');
         setActiveImage(imageMetadata[(activeImage.index - 1 + imageMetadata.length) % imageMetadata.length]);
+        trackEvent('image_navigation', {
+            direction: 'previous',
+            image_id: activeImage.id
+        });
     }
 
     /**
@@ -528,6 +573,9 @@ const Dashboard = ({ userData, Logout }) => {
         // focus on search box
         document.getElementById('search-box').focus();
         setSearchText(text);
+        trackEvent('speech_to_text_search', {
+            search_query: text
+        });
     }
 
     /**
@@ -593,11 +641,18 @@ const Dashboard = ({ userData, Logout }) => {
 
             let result = await getDataFromPrompt(prompt);
             setWittyText(result);
+            trackEvent('generate_description_complete', {
+                image_id: imageMetadata[index].id,
+                success: true
+            });
         }
         catch (error) {
             console.error('Error preparing prompt:', error);
         }
         setWittyTextLoader(false);
+        trackEvent('generate_description_start', {
+            image_id: imageMetadata[index].id
+        });
         
     }
 
@@ -630,6 +685,9 @@ const Dashboard = ({ userData, Logout }) => {
     function onSelectLabel(label) {
         setSelectedLable(label);
         getSelectedLables([label]);
+        trackEvent('label_filter_click', {
+            selected_label: label
+        });
     }
 
     /**
@@ -638,6 +696,9 @@ const Dashboard = ({ userData, Logout }) => {
     const clearFilter = () => {
         setSelectedLable('');
         setSearchResults([]);
+        trackEvent('clear_search_filter', {
+            previous_filter: selectedLable
+        });
     }
 
 
